@@ -1,0 +1,174 @@
+@api = http://localhost:3000/api
+@expiredToken = paste-an-expired-HS256-token-here
+
+# For @expiredToken, sign a token with the same JWT_SECRET and expiresIn: -1.
+# See the README for a command that generates one.
+
+###
+# @name register
+POST {{api}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "REST Client User",
+  "email": "rest-client-{{$guid}}@example.test",
+  "password": "RestClientPass123"
+}
+
+###
+# @name login
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "{{register.response.body.user.email}}",
+  "password": "RestClientPass123"
+}
+
+###
+GET {{api}}/auth/me
+Authorization: Bearer {{login.response.body.token}}
+
+###
+GET {{api}}/notes
+Authorization: Bearer {{login.response.body.token}}
+
+###
+GET {{api}}/notes?q=meeting&tag=work&pinned=true&page=1&limit=10
+Authorization: Bearer {{login.response.body.token}}
+
+###
+# @name createNote
+POST {{api}}/notes
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "REST Client note",
+  "body": "Created from requests.http",
+  "tags": ["work", "demo"],
+  "pinned": false
+}
+
+###
+GET {{api}}/notes/{{createNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+
+###
+PATCH {{api}}/notes/{{createNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "Updated REST Client note",
+  "pinned": true
+}
+
+###
+DELETE {{api}}/notes/{{createNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+
+###
+# Missing token: expect 401 and WWW-Authenticate.
+GET {{api}}/notes
+
+###
+# Garbled token: expect 401 and WWW-Authenticate.
+GET {{api}}/notes
+Authorization: Bearer not-a-valid-jwt
+
+###
+# Expired token: paste a generated expired token into @expiredToken above.
+GET {{api}}/notes
+Authorization: Bearer {{expiredToken}}
+
+###
+# Invalid note UUID: expect 422.
+GET {{api}}/notes/not-a-uuid
+Authorization: Bearer {{login.response.body.token}}
+
+###
+# Invalid note body: expect 422 with field errors.
+POST {{api}}/notes
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "",
+  "body": 42,
+  "tags": [""]
+}
+
+###
+# Invalid list filter: expect 422.
+GET {{api}}/notes?page=0&limit=1000&pinned=sometimes
+Authorization: Bearer {{login.response.body.token}}
+
+###
+# @name registerOtherUser
+POST {{api}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Another REST Client User",
+  "email": "other-{{$guid}}@example.test",
+  "password": "AnotherRestPass123"
+}
+
+###
+# @name createOtherUsersNote
+POST {{api}}/notes
+Authorization: Bearer {{registerOtherUser.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "Private note owned by another user",
+  "body": "The primary user's token must not access this note.",
+  "tags": ["private"]
+}
+
+###
+# The other user's list must not include the primary user's note.
+GET {{api}}/notes
+Authorization: Bearer {{registerOtherUser.response.body.token}}
+
+###
+# Another user's note: expect 404, not 403.
+GET {{api}}/notes/{{createOtherUsersNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+
+###
+# Another user's note: expect 404, not 403.
+PATCH {{api}}/notes/{{createOtherUsersNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+Content-Type: application/json
+
+{
+  "title": "Attempted unauthorized update"
+}
+
+###
+# Another user's note: expect 404, not 403.
+DELETE {{api}}/notes/{{createOtherUsersNote.response.body.note.id}}
+Authorization: Bearer {{login.response.body.token}}
+
+###
+# Registration validation error: expect 422.
+POST {{api}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "",
+  "email": "not-an-email",
+  "password": "short"
+}
+
+###
+# Login validation/credential error: expect generic 401.
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "not-an-email",
+  "password": "wrong"
+}
